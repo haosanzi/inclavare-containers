@@ -1,3 +1,4 @@
+#$$$
 .PHONY: all install clean uninstall package
 
 export INCLAVARE_CONTAINERS_VERSION := $(shell cat ./VERSION)
