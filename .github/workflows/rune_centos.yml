@@ -1,0 +1,120 @@
+name: Inclavare Containers CI
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+on: [workflow_dispatch]
+    #  push:
+    #branches:
+    #- warm
+
+env:
+  occlum_version: 0.17.0
+  nap_time: 60
+
+jobs:
+  rune_centos:
+    runs-on: self-hosted
+    steps:
+    - uses: actions/checkout@v1
+      with:
+       submodules: true
+
+    - name: Create container
+      run: docker run -itd --privileged --name=centos --net host --device /dev/isgx -v /var/run/aesmd:/var/run/aesmd -v $GITHUB_WORKSPACE:/root/inclavare-containers occlum/occlum:${{ env.occlum_version }}-centos8.1
+
+    - name: Install dependencies
+      run: docker exec centos bash -c "yum install -y libseccomp-devel;
+            cd /root && wget -q https://dl.google.com/go/go1.14.2.linux-amd64.tar.gz;
+            tar -zxf /root/go1.14.2.linux-amd64.tar.gz -C /usr/lib;
+            echo 'export GOROOT=/usr/lib/go' >> /etc/profile;
+            echo 'export GOPATH=/root/gopath' >> /etc/profile;
+            echo 'export PATH=$GOROOT/bin:$PATH:$GOPATH/bin' >> /etc/profile;
+            echo 'export GOPROXY="https://mirrors.aliyun.com/goproxy,direct"' >>/etc/profile;
+            echo 'export GO111MODULE=on' >>/etc/profile;
+            source /etc/profile && go get github.com/golang/protobuf/protoc-gen-go@v1.3.5;"
+
+    - name: Build and install rune
+      run: docker exec centos bash -c "cd /root;
+            cp -r inclavare-containers inclavare-containers-0.5.0;
+            tar zcf v0.5.0.tar.gz inclavare-containers-0.5.0;
+            source /etc/profile && cd /root/inclavare-containers-0.5.0;
+            mkdir -p /root/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS};
+            cp /root/v0.5.0.tar.gz /root/rpmbuild/SOURCES/;
+            make package components=rune RPMBUILD_DIR=/root/rpmbuild RELEASE_TARBALL_FILE=/root/rpmbuild/SOURCES/v0.5.0.tar.gz RELEASE_TARBALL_EXIST=y;
+            rpm -ivh rune-0.5.0-1.el8.x86_64.rpm;"
+
+    - name: Install and configure docker
+      run: |
+           docker exec centos bash -c "mkdir /etc/docker; cat << EOF >/etc/docker/daemon.json
+           { 
+               \"runtimes\":{
+                   \"rune\":{
+                       \"path\":\"/usr/local/bin/rune\",
+                       \"runtimeArgs\":[]
+                     }
+                 }
+            }
+            EOF"
+            docker exec centos bash -c "sed -i -e '/EOF/d' /etc/docker/daemon.json;" 
+            docker exec centos bash -c "yum install -y yum-utils device-mapper-persistent-data lvm2;
+            yum-config-manager --add-repo http://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo;
+            yum install -y docker-ce-18.03.0.ce;
+            dockerd -b docker0 --storage-driver=vfs &"
+
+    - name: Build Occlum Application Image
+      run: |
+           docker exec centos bash -c "cat << EOF >/root/hello_world.c
+              "#include\<stdio.h\>"
+              int main ()
+              {
+              printf(\"Hello World\n\");
+              return 0;
+              }
+              EOF"
+
+            docker exec centos bash -c "sed -i -e '/EOF/d' /root/hello_world.c;
+             occlum-gcc -o hello_world hello_world.c; occlum new occlum_instance && cd occlum_instance; 
+             cp ../hello_world image/bin/ && occlum build;
+             occlum package occlum_instance.tar.gz;"
+
+             docker exec centos bash -c "cat >/root/occlum_instance/Dockerfile <<EOF
+             FROM centos:8.1.1911
+             RUN mkdir -p /run/rune
+             WORKDIR /run/rune
+             ADD occlum_instance.tar.gz /run/rune
+             ENTRYPOINT [\"/bin/hello_world\"]
+             EOF"
+
+             docker exec centos bash -c "cd /root/occlum_instance;
+              sed -i -e '/EOF/d' Dockerfile;
+              docker build . -t occlum-app;"
+
+    - name: Build skeleton image
+      run: |
+           docker exec centos bash -c "dnf --enablerepo=PowerTools install -y protobuf-devel protobuf-c-devel;
+            cd /root/inclavare-containers/rune/libenclave/internal/runtime/pal/skeleton;
+            make && cp liberpal-skeleton-v*.so /usr/lib;
+            cat >Dockerfile <<-EOF
+            FROM centos:8.1.1911
+
+            RUN mkdir -p /run/rune
+            WORKDIR /run/rune
+
+            COPY encl.bin .
+            COPY encl.elf .
+            COPY encl.ss .
+            EOF"
+
+            docker exec centos bash -c "cd /root/inclavare-containers/rune/libenclave/internal/runtime/pal/skeleton;
+             sed -i -e '/EOF/d' Dockerfile; 
+             docker build . -t skeleton-enclave;"
+
+    - name: Rune Occlum image
+      run: docker exec centos bash -c "source /etc/profile; docker run -i --rm --runtime=rune -e ENCLAVE_TYPE=intelSgx -e ENCLAVE_RUNTIME_PATH=/opt/occlum/build/lib/libocclum-pal.so -e ENCLAVE_RUNTIME_ARGS=occlum_instance occlum-app;"
+    
+    - name: Rune skeleton image
+      run: docker exec centos bash -c "source /etc/profile; docker run -i --rm --runtime=rune -e ENCLAVE_TYPE=intelSgx -e ENCLAVE_RUNTIME_PATH=/usr/lib/liberpal-skeleton-v2.so -e ENCLAVE_RUNTIME_ARGS=debug skeleton-enclave || true;"
+
+    - name: Kill the container
+      run: |
+        sleep ${{ env.nap_time }};
+        docker stop centos
