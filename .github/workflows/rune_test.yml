@@ -5,7 +5,6 @@ on: [push, pull_request]
 
 jobs:
   rune_ubuntu:
-    needs: rune_centos
     runs-on: self-hosted
     steps:
     - uses: actions/checkout@v1
@@ -37,12 +36,14 @@ jobs:
       run: docker exec ubuntu bash -c "cd /root;
         cp -r inclavare-containers inclavare-containers-$RUNE_VERSION;
         tar zcf v$RUNE_VERSION.tar.gz inclavare-containers-$RUNE_VERSION;
-        echo "$RUNE_VERSION" > /root/inclavare-containers-$RUNE_VERSION/VERSION;
-        sed -i '17 d' /root/inclavare-containers-$RUNE_VERSION/rune/dist/deb/build.sh;
-        sed -i '17icp /root/v*.tar.gz \$DEBBUILD_DIR' /root/inclavare-containers-$RUNE_VERSION/rune/dist/deb/build.sh;
-        source /etc/profile && cd /root/inclavare-containers-$RUNE_VERSION;
+        pushd /root/inclavare-containers-$RUNE_VERSION;
+        echo "$RUNE_VERSION" > VERSION;
+        sed -i '17 d' rune/dist/deb/build.sh;
+        sed -i '17icp /root/v*.tar.gz \$DEBBUILD_DIR' rune/dist/deb/build.sh;
+        source /etc/profile;
         chmod +x rune/dist/deb/build.sh && make package components=rune;
-        dpkg -i rune_$RUNE_VERSION-1_amd64.deb"
+        dpkg -i rune_$RUNE_VERSION-1_amd64.deb;
+        popd"
 
     - name: Install and configure docker
       run: |
@@ -126,6 +127,7 @@ jobs:
       run: docker stop ubuntu
 
   rune_centos:
+    needs: rune_ubuntu
     runs-on: self-hosted
     steps:
     - uses: actions/checkout@v1
@@ -155,8 +157,11 @@ jobs:
         source /etc/profile && cd /root/inclavare-containers-$RUNE_VERSION;
         mkdir -p /root/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS};
         cp /root/v$RUNE_VERSION.tar.gz /root/rpmbuild/SOURCES/;
-        sed -i '16 d' /root/inclavare-containers-$RUNE_VERSION/rune/dist/Makefile;
+        pushd /root/inclavare-containers-$RUNE_VERSION;
+        sed -i '16 d' rune/dist/Makefile;
         make package components=rune  RPMBUILD_DIR=/root/rpmbuild RELEASE_TARBALL_FILE=/root/rpmbuild/SOURCES/v$RUNE_VERSION.tar.gz RELEASE_TARBALL_EXIST=y;
+        sed -i "/Version/a\Version:$RUNE_VERSION" shim/dist/rpm/shim-rune.spec;
+        sed -i '11 d' shim/dist/rpm/shim-rune.spec;
         make package components=shim  RPMBUILD_DIR=/root/rpmbuild RELEASE_TARBALL_FILE=/root/rpmbuild/SOURCES/v$RUNE_VERSION.tar.gz RELEASE_TARBALL_EXIST=y;
         rpm -ivh rune-$RUNE_VERSION-1.el8.x86_64.rpm;
         rpm -ivh shim-rune-$RUNE_VERSION-1.el8.x86_64.rpm"
@@ -204,18 +209,15 @@ jobs:
 
     - name: Run dragonwell-web pod
       run: docker exec centos bash -c "cd /root/samples && ./clean.sh;
-        crictl run --timeout 3s dragonwell.yaml pod.yaml;
-        sleep 30 && ./show.sh"
+        crictl run --timeout 3s dragonwell.yaml pod.yaml && ./show.sh"
 
     - name: Run openjdk-web pod
       run: docker exec centos bash -c "cd /root/samples && ./clean.sh;
-        crictl run --timeout 3s jdk.yaml pod.yaml;
-        sleep 30 && ./show.sh"
+        crictl run --timeout 3s jdk.yaml pod.yaml && ./show.sh"
 
     - name: Run golang-web pod
       run: docker exec centos bash -c "cd /root/samples && ./clean.sh;
-        crictl run --timeout 3s golang.yaml pod.yaml;
-        sleep 15 && ./show.sh"
+        crictl run --timeout 3s golang.yaml pod.yaml && ./show.sh"
 
     - name: Kill the container
       run: docker stop centos

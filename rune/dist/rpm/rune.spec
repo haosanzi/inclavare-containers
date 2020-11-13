@@ -6,7 +6,7 @@
 %global BIN_DIR /usr/local/bin
 
 Name: rune
-Version: 0.5.0
+Version: 0.6.0
 Release: %{centos_base_release}%{?dist}
 Summary: CLI tool for spawning and running enclaves in containers according to the OCI specification.  
 
