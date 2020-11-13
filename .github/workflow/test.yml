@@ -1,0 +1,13 @@
+name: label
+on: [pull_request]
+
+jobs:
+  label:
+    name: Run only when the labels do not include "dependencies"
+    if: ${{ !contains(github.event.pull_request.labels.*.names, 'dependencies') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: debug
+        run: |
+          echo "${{ toJson(github.event.pull_request.labels) }}"
+          echo "${{ toJson(github.event.pull_request.labels.*.names) }}"
