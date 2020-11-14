@@ -8,6 +8,9 @@ all:
 		$(MAKE) -C $$name; \
 	done
 
+
+
+
 install:
 	for name in $(components); do \
 		$(MAKE) -C $$name install; \
