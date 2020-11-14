@@ -1,16 +1,19 @@
 name: Run rune with docker and crictl test
 
 # Controls when the action will run. Triggers the workflow on pull request labeled start-testing.
-on: [workflow_dispatch]
-
-#  pull_request:
-#    types: labeled
+on:
+  pull_request:
+    types: labeled
 
 jobs:
   # TODO: add rune circtl test on ubuntu image.
   rune_ubuntu:
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'ready-for-testing') }}
     runs-on: self-hosted
     steps:
+    - name: Prepare work before running
+      run: sudo chown -R ${{ secrets.CI_ADMIN }} "${{ github.workspace }}" 
+
     - name: Prepare work before running
       run: sudo chown -R ${{ secrets.CI_ADMIN }} "${{ github.workspace }}"
 
