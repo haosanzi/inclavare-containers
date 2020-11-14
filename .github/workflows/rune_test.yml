@@ -1,14 +1,14 @@
 name: Run rune with docker and crictl test
 
 # Controls when the action will run. Triggers the workflow on pull request labeled start-testing.
-on: [workflow_dispatch]
-
-#  pull_request:
-#    types: labeled
+on:
+  pull_request:
+    types: labeled
 
 jobs:
   # TODO: add rune circtl test on ubuntu image.
   rune_ubuntu:
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'ready-for-testing') }}
     runs-on: self-hosted
     steps:
     - name: Prepare work before running
@@ -16,10 +16,10 @@ jobs:
 
     - uses: actions/checkout@v1
 
+      # We usually update rune.spec to the latest version before release and update VERSION file when released. Therefore we get the lates version according to rune.spec.
     - name: Get version
       run: wget https://raw.githubusercontent.com/occlum/occlum/master/src/pal/include/occlum_version.h;
         echo "OCCLUM_VERSION=$(grep 'Version =' occlum_version.h | awk '{print $4}')" >> $GITHUB_ENV && rm -f occlum_version.h;
-        # We usually update rune.spec to the latest version before release and update VERSION file when released.
         echo "RUNE_VERSION=$(grep 'Version:' rune/dist/rpm/rune.spec | awk '{print $2}')" >> $GITHUB_ENV
 
     - name: Create container

@@ -1,7 +1,6 @@
 name: label
 on: [pull_request]
 
-
 jobs:
   label:
     name: Run only when the labels do not include "dependencies"
