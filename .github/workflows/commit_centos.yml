@@ -2,7 +2,7 @@ name: Run rune on centos with docker and crictl test
 
 # Controls when the action will run. Triggers the workflow on pull request labeled testing-before-checkin.
 on:
-  pull_request:
+  pull_request_target:
     types: labeled
 
 jobs:
@@ -45,22 +45,6 @@ jobs:
         rpm -ivh shim-rune-$RUNE_VERSION-1.el8.x86_64.rpm;
         rpm -ivh sgx-tools-$RUNE_VERSION-1.el8.x86_64.rpm"
 
-    - name: Build Occlum application image on centos
-      run: | 
-        docker exec $centos bash -c "dockerd -b docker0 --storage-driver=vfs &"
-
-        docker exec $centos bash -c "occlum-gcc -o hello_world hello_world.c;
-        occlum new occlum_instance && cd occlum_instance;
-        cp ../hello_world image/bin/ && occlum build;
-        occlum package occlum_instance.tar.gz;
-        cat >/root/occlum_instance/Dockerfile <<-EOF
-        FROM scratch
-
-        ADD occlum_instance.tar.gz /
-        ENTRYPOINT [\"/bin/hello_world\"]
-        EOF
-        docker build . -t occlum-app"
-
     - name: Build skeleton image on centos
       run: |
         docker exec $centos bash -c "dnf --enablerepo=PowerTools install -y binutils-devel protobuf-devel protobuf-c-devel;
@@ -77,43 +61,6 @@ jobs:
 
         docker exec $centos bash -c "cd /root/inclavare-containers/rune/libenclave/internal/runtime/pal/skeleton;
         docker build . -t skeleton-enclave"
-
-    - name: Run Occlum image on centos
-      run: docker exec $centos bash -c "source /etc/profile; docker run -i --rm --runtime=rune -e ENCLAVE_TYPE=intelSgx -e ENCLAVE_RUNTIME_PATH=/opt/occlum/build/lib/libocclum-pal.so -e ENCLAVE_RUNTIME_ARGS=occlum_instance occlum-app"
-
-    - name: Run skeleton-v1.so on centos
-      if: always()
-      run: docker exec $centos bash -c "source /etc/profile; docker run -i --rm --runtime=rune -e ENCLAVE_TYPE=intelSgx -e ENCLAVE_RUNTIME_PATH=/usr/lib/liberpal-skeleton-v1.so -e ENCLAVE_RUNTIME_ARGS=debug skeleton-enclave"
-
-    - name: Run skeleton-v2.so on centos
-      if: always()
-      run: docker exec $centos bash -c "source /etc/profile; docker run -i --rm --runtime=rune -e ENCLAVE_TYPE=intelSgx -e ENCLAVE_RUNTIME_PATH=/usr/lib/liberpal-skeleton-v2.so -e ENCLAVE_RUNTIME_ARGS=debug skeleton-enclave"
-
-    - name: Run skeleton-v3.so on centos
-      if: always()
-      run: docker exec $centos bash -c "source /etc/profile; docker run -i --rm --runtime=rune -e ENCLAVE_TYPE=intelSgx -e ENCLAVE_RUNTIME_PATH=/usr/lib/liberpal-skeleton-v3.so -e ENCLAVE_RUNTIME_ARGS=debug skeleton-enclave"
-
-    - name: Run occlum-hello pod on centos
-      if: always()
-      run: docker exec $centos bash -c "containerd" &
-
-        docker exec $centos bash -c "cd /root/samples && ./clean.sh;
-        crictl run --timeout 3s hello.yaml pod.yaml && ./show.sh"
-
-    - name: Run dragonwell-web pod on centos
-      if: always()
-      run: docker exec $centos bash -c "cd /root/samples && ./clean.sh;
-        crictl run --timeout 3s dragonwell.yaml pod.yaml && ./show.sh"
-
-    - name: Run openjdk-web pod on centos
-      if: always()
-      run: docker exec $centos bash -c "cd /root/samples && ./clean.sh;
-        crictl run --timeout 3s jdk.yaml pod.yaml && ./show.sh"
-
-    - name: Run golang-web pod on centos
-      if: always()
-      run: docker exec $centos bash -c "cd /root/samples && ./clean.sh;
-        crictl run --timeout 3s golang.yaml pod.yaml && ./show.sh"
 
     - name: Create skeleton bundle on centos
       if: always()
@@ -155,21 +102,6 @@ jobs:
     - name: Get local report with rune attest command with skeleton on centos
       if: always()
       run: docker exec $centos bash -c "rune --debug attest --reportFile=/report.bin skeleton-enclave-container"
-
-    - name: Get target info with sgx-tools on centos
-      if: always()
-      run: docker exec $centos bash -c "cd rootfs;
-        sgx-tools -verbose gen-qe-target-info"
-
-    - name: Get quote with sgx-tools on centos
-      if: always()
-      run: docker exec $centos bash -c "cd rootfs;
-        sgx-tools -verbose gen-quote --report report.bin --spid=${{ secrets.SPID }}"
-
-    - name: Get remote report with sgx-tools on centos
-      if: always()
-      run: docker exec $centos bash -c "cd rootfs;
-        sgx-tools -verbose get-ias-report --quote quote.bin --spid=${{ secrets.SPID }} --subscription-key=${{ secrets.SUB_KEY }}"
 
     - name: Kill the container
       if: always()

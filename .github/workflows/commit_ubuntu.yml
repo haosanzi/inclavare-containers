@@ -2,7 +2,7 @@ name: Run rune on ubuntu with docker and crictl test
 
 # Controls when the action will run. Triggers the workflow on pull request labeled testing-before-checkin.
 on:
-  pull_request:
+  pull_request_target:
     types: labeled
 
 jobs:
