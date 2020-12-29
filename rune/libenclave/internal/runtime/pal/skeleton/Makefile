@@ -18,6 +18,9 @@ all: $(TEST_CUSTOM_PROGS)
 libvmm:
 	$(MAKE) -C ../kvmtool all
 
+ra-tls-server:
+	$(MAKE) -C ../ra-tls
+
 ../kvmtool/libvmm.a: libvmm
 
 $(OUTPUT)/liberpal-skeleton-v1.so: $(OUTPUT)/sgx_call.o $(OUTPUT)/liberpal-skeleton-v1.o $(OUTPUT)/liberpal-skeleton.o $(OUTPUT)/sgxutils.o $(OUTPUT)/aesm.o $(OUTPUT)/aesm.pb-c.o ../kvmtool/libvmm.a
