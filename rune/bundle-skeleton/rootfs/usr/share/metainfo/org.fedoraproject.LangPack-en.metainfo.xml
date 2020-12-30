@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="localization">
+  <id>org.fedoraproject.LangPack-en</id>
+  <name>English</name>
+  <summary>Localization support for English</summary>
+  <description><p>
+        Meta-package to install available langpacks for the language available for the installed packages.
+      </p></description>
+  <metadata_license>CC0-1.0</metadata_license>
+</component>

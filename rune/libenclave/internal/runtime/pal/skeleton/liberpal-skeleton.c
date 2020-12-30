@@ -25,6 +25,13 @@
 #include "aesm.h"
 #include "../kvmtool/libvmm.h"
 
+// For ra-tls
+#include "sgx_urts.h"
+/* socket includes */
+#include <netinet/in.h>
+#include <sys/un.h>
+#include <unistd.h>
+
 #define SGX_REG_PAGE_FLAGS \
 	(SGX_SECINFO_REG | SGX_SECINFO_R | SGX_SECINFO_W | SGX_SECINFO_X)
 
@@ -39,6 +46,7 @@ static int wait_timeout;
 bool debugging = false;
 bool is_oot_driver;
 bool backend_kvm = false;
+bool ra_tls_server = false;
 struct kvm *kvm_vm;
 static const char *kvm_kernel;
 static const char *kvm_rootfs;
@@ -49,6 +57,10 @@ static const char *kvm_init;
  */
 int enclave_fd = -1;
 void *tcs_busy;
+
+//For ra-tls
+static sgx_enclave_id_t global_eid = SGX_ERROR_INVALID_ENCLAVE_ID;
+extern int ra_tls_server_startup(sgx_enclave_id_t id, int sockfd);
 
 __attribute__((constructor))
 static void detect_driver_type(void)
@@ -654,6 +666,8 @@ static void check_opts(const char *opt)
 		kvm_rootfs = strdup(opt + 11);
 	} else if (!strncmp(opt, "kvm-init=", 9)) {
 		kvm_init = strdup(opt + 9);
+	} else if (!strcmp(opt, "ra-tls-server")) {
+		ra_tls_server = true;
 	}
 }
 
@@ -714,6 +728,66 @@ int __pal_init_v1(pal_attr_v1_t *attr)
 
 	parse_args(attr->args);
 
+	if (ra_tls_server) {
+		printf("Begin server test!\n");
+		
+		sgx_launch_token_t t;
+		memset(t, 0, sizeof(t));
+
+		sgx_enclave_id_t eid;
+		int updated = 0;
+		const char *enclave_path = "/run/rune/Wolfssl_Enclave.signed.so";
+		int ret = sgx_create_enclave(enclave_path, 1, &t, &updated, &eid, NULL);
+		if (ret != SGX_SUCCESS) {
+			fprintf(stderr, "Failed to create Enclave: error %d\n", ret);
+			return -1;
+		}
+		
+		printf("eid is %ld\n", eid);
+		global_eid = eid;
+
+                printf("    - Welcome to ra tls server\n");
+                const char *SOCKNAME = "/run/rune/ra-tls.sock";
+                int sockfd;
+                int connd;
+                struct sockaddr_un servAddr;
+                if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+                        perror("Failed to create the socket.");
+                        return -1;
+                }
+                /* Initialize the server address struct with zeros */
+                memset(&servAddr, 0, sizeof(servAddr));
+                /* Fill in the server address */
+                servAddr.sun_family = AF_UNIX;
+                strncpy(servAddr.sun_path, SOCKNAME, sizeof(servAddr.sun_path)-1);
+
+                /* Bind the server socket*/
+                if (bind(sockfd, (struct sockaddr*)&servAddr, sizeof(servAddr)) == -1) {
+                        perror("Failed to bind.");
+                        return -1;
+                }
+                
+		chmod (SOCKNAME, 0777);
+		//int ret_val = chmod(sockfd, 0777);
+		/* Listen for a new connection, allow 5 pending connections */
+                if (listen(sockfd, 5) == -1) {
+                        perror("Failed to listen.");
+                        return -1;
+                }
+
+                printf("Waiting for a connection...\n");
+                /* Accept client connections */
+                if ((connd = accept(sockfd, NULL, NULL)) == -1) {
+                        perror("Failed to accept the connection.");
+                        return -1;
+                }
+                printf("skeleton: begin to enter ra_tls_start up\n");
+                ra_tls_server_startup(global_eid, connd);
+
+		initialized = true;
+		return 0;
+	}
+
 	if (backend_kvm) {
 		if (!kvm_kernel || !kvm_rootfs)
 			return -EINVAL;
@@ -738,7 +812,6 @@ int __pal_init_v1(pal_attr_v1_t *attr)
 		initialized = true;
 		return 0;
 	}
-
 	tcs_busy = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
 			MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 	if (tcs_busy == MAP_FAILED)
@@ -777,7 +850,6 @@ int __pal_exec(char *path, char *argv[], pal_stdio_fds *stdio, int *exit_code)
 	if (path == NULL || argv == NULL || stdio == NULL || exit_code == NULL) {
 		return -1;
 	}
-
 	FILE *fp = fdopen(stdio->stderr, "w");
 	if (!fp)
 		return -1;
@@ -818,6 +890,9 @@ int __pal_create_process(pal_create_process_args *args)
 
 	if (backend_kvm)
 		return 0;
+
+	if (ra_tls_server)
+		printf("Hello ra tls server in pal_create process!\n");
 
 	/* SGX out-of-tree driver disallows the creation of shared enclave mapping
 	 * between parent and child process, so simply launching __pal_exec() directly here.
@@ -910,7 +985,7 @@ int __pal_get_local_report(void *targetinfo, int targetinfo_len,
 		return -1;
 	}
 
-	if (backend_kvm)
+	if (backend_kvm || ra_tls_server)
 		/* No implementation */
 		return 0;
 
@@ -962,7 +1037,7 @@ int __pal_kill(int pid, int sig)
 		return -1;
 	}
 
-	if (backend_kvm)
+	if (backend_kvm || ra_tls_server)
 		return 0;	/* TODO: libvmm_vm_kill(kvm_vm); */
 
 	/* No implementation */
@@ -987,6 +1062,11 @@ int __pal_destroy(void)
 
 	if (backend_kvm)
 		return libvmm_vm_exit(kvm_vm);
+
+	if (ra_tls_server) {
+		printf("kill the ra_tls_server\n");
+		return 0;
+	}
 
 	close(enclave_fd);
 

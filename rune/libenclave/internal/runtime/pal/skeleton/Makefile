@@ -3,25 +3,38 @@ OBJCOPY := $(CROSS_COMPILE)objcopy
 endif
 
 OUTPUT ?= ./
+SGX_SDK ?= /opt/intel/sgxsdk
+RA_TLS_SERVER := ../ra-tls/ra-tls-server/lib
+LIBDIR := ../ra-tls/build/lib
+BINDIR := ../ra-tls/build/bin
+INCDIR := ../ra-tls/build/include
+SGX_RA_TLS := ../ra-tls/sgx-ra-tls
+
 HOST_CFLAGS := -Wall -Werror -g -fPIC -z noexecstack \
-	       -Wno-unused-const-variable -std=gnu11 -I../kvmtool/include
+	       -Wno-unused-const-variable -std=gnu11 -I../kvmtool/include \
+	       -I$(SGX_SDK)/include  -I$(SGX_RA_TLS) -I$(INCDIR) -I$(BINDIR) \
+	       -g -O0 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_CERT_EXT \
+	       -DSGX_GROUP_OUT_OF_DATE
+
 ENCL_CFLAGS := -Wall -Werror -static -nostdlib -nostartfiles -fPIC \
 	       -fno-stack-protector -mrdrnd -std=gnu11
 HOST_LDFLAGS := -fPIC -shared -Wl,-Bsymbolic
 
+LDFLAGS := -L$(LIBDIR) -L/opt/intel/sgxsdk/lib64 -L$(RA_TLS_SERVER) -lsgx_uae_service -lsgx_uae_service -lsgx_urts $(RA_TLS_SERVER)/libra-tls-server.a $(LIBDIR)/libcurl-wolfssl.a $(LIBDIR)/libwolfssl.a -lz -lm
+
 PRODUCT_ENCLAVE ?=
 
-TEST_CUSTOM_PROGS := $(OUTPUT)/encl.bin $(OUTPUT)/encl.ss $(OUTPUT)/aesm.pb-c.c $(OUTPUT)/liberpal-skeleton-v1.so $(OUTPUT)/liberpal-skeleton-v2.so $(OUTPUT)/liberpal-skeleton-v3.so $(OUTPUT)/signing_key.pem
+TEST_CUSTOM_PROGS := $(RA_TLS_SERVER)/libra-tls-server.a $(OUTPUT)/encl.bin $(OUTPUT)/encl.ss $(OUTPUT)/aesm.pb-c.c $(OUTPUT)/liberpal-skeleton-v1.so $(OUTPUT)/liberpal-skeleton-v2.so $(OUTPUT)/liberpal-skeleton-v3.so $(OUTPUT)/signing_key.pem
 
 all: $(TEST_CUSTOM_PROGS)
 
 libvmm:
 	$(MAKE) -C ../kvmtool all
 
-ra-tls-server:
-	$(MAKE) -C ../ra-tls
-
 ../kvmtool/libvmm.a: libvmm
+
+$(RA_TLS_SERVER)/libra-tls-server.a:
+	$(MAKE) -C $(RA_TLS_SERVER)
 
 $(OUTPUT)/liberpal-skeleton-v1.so: $(OUTPUT)/sgx_call.o $(OUTPUT)/liberpal-skeleton-v1.o $(OUTPUT)/liberpal-skeleton.o $(OUTPUT)/sgxutils.o $(OUTPUT)/aesm.o $(OUTPUT)/aesm.pb-c.o ../kvmtool/libvmm.a
 	$(CC) $(HOST_LDFLAGS) -o $@ $^ -lprotobuf-c -lutil -lbfd
@@ -29,14 +42,14 @@ $(OUTPUT)/liberpal-skeleton-v1.so: $(OUTPUT)/sgx_call.o $(OUTPUT)/liberpal-skele
 $(OUTPUT)/liberpal-skeleton-v1.o: liberpal-skeleton-v1.c liberpal-skeleton.c
 	$(CC) $(HOST_CFLAGS) -c $< -o $@
 
-$(OUTPUT)/liberpal-skeleton-v2.so: $(OUTPUT)/sgx_call.o $(OUTPUT)/liberpal-skeleton-v2.o $(OUTPUT)/liberpal-skeleton.o $(OUTPUT)/sgxutils.o $(OUTPUT)/aesm.o $(OUTPUT)/aesm.pb-c.o ../kvmtool/libvmm.a
-	$(CC) $(HOST_LDFLAGS) -o $@ $^ -lprotobuf-c -lutil -lbfd
+$(OUTPUT)/liberpal-skeleton-v2.so: $(OUTPUT)/sgx_call.o $(OUTPUT)/liberpal-skeleton-v2.o $(OUTPUT)/liberpal-skeleton.o $(OUTPUT)/sgxutils.o $(OUTPUT)/aesm.o $(OUTPUT)/aesm.pb-c.o ../kvmtool/libvmm.a $(RA_TLS_SERVER)/libra-tls-server.a 
+	$(CC) $(HOST_LDFLAGS) -o $@ $^ -lprotobuf-c -lutil -lbfd $(LDFLAGS)
 
 $(OUTPUT)/liberpal-skeleton-v2.o: liberpal-skeleton-v2.c liberpal-skeleton.c
 	$(CC) $(HOST_CFLAGS) -c $< -o $@
 
 $(OUTPUT)/liberpal-skeleton.o: liberpal-skeleton.c
-	$(CC) $(HOST_CFLAGS) -c $< -o $@
+	$(CC) $(HOST_CFLAGS) -c $< -o $@ $(LDFLAGS)
 
 $(OUTPUT)/liberpal-skeleton-v3.so: $(OUTPUT)/sgx_call.o $(OUTPUT)/liberpal-skeleton-v3.o $(OUTPUT)/liberpal-skeleton.o $(OUTPUT)/sgxutils.o $(OUTPUT)/aesm.o $(OUTPUT)/aesm.pb-c.o ../kvmtool/libvmm.a
 	$(CC) $(HOST_LDFLAGS) -o $@ $^ -lprotobuf-c -lutil -lbfd
@@ -97,5 +110,6 @@ EXTRA_CLEAN := \
 clean:
 	rm -f ${EXTRA_CLEAN}
 	$(MAKE) -C ../kvmtool clean
+	$(MAKE) -C ../ra-tls/ra-tls-server/lib clean
 
 .PHONY: clean all

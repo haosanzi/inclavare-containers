@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	defaultAddress = "/run/rune/ra-tls.sock"
+	//defaultAddress = "/run/rune/ra-tls.sock"
+	defaultAddress = "/root/shirong.hsr-rune-dev/haosanzi/inclavare-containers/rune/bundle-skeleton/rootfs/ra-tls.sock"
 )
 
 var echoCommand = cli.Command{

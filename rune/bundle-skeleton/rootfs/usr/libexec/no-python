@@ -1,0 +1,8 @@
+#! /bin/bash
+
+echo "For more information about this script,"
+echo "please see the manual page of the same name."
+
+echo "Run: man unversioned-python"
+exit 2
+

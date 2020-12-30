@@ -48,6 +48,8 @@ int ra_tls_server_startup(sgx_enclave_id_t id, int connd)
 	enc_wolfSSL_Debugging_OFF(id);
 #endif
 
+	printf("ra_tls_server_startup...\n");
+
 	int ret;
 	int sgxStatus;
 	sgxStatus = enc_wolfSSL_Init(id, &ret);
@@ -71,6 +73,7 @@ int ra_tls_server_startup(sgx_enclave_id_t id, int connd)
 	sgxStatus = enc_wolfSSL_new(id, &ssl, ctx);
 	if (sgxStatus != SGX_SUCCESS || !ssl)
 		goto err;
+	printf("Begin Attach wolfSSL to the socket\n");
 
 	/* Attach wolfSSL to the socket */
 	sgxStatus = enc_wolfSSL_set_fd(id, &ret, ssl, connd);

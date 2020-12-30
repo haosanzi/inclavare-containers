@@ -1,0 +1,22 @@
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Boss' requested by ':1.0' (uid=0 pid=1879 comm="/usr/libexec/platform-python /sbin/anaconda " label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Boss'
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Modules.Timezone' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Modules.Network' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Modules.Localization' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Modules.Security' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Modules.Users' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Modules.Payload' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Modules.Storage' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Modules.Services' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Modules.Subscription' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Activating service name='org.fedoraproject.Anaconda.Addons.Baz' requested by ':1.1' (uid=0 pid=1947 comm="/usr/libexec/platform-python -m pyanaconda.modules" label="system_u:system_r:kernel_t:s0")
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Modules.Security'
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Modules.Timezone'
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Modules.Localization'
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Modules.Services'
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Modules.Payload'
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Addons.Baz'
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Modules.Network'
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Modules.Users'
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Modules.Subscription'
+dbus-daemon[1943]: Successfully activated service 'org.fedoraproject.Anaconda.Modules.Storage'

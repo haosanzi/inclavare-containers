@@ -1,0 +1,7 @@
+# dist macros.
+
+%centos_ver 8
+%centos 8
+%rhel 8
+%dist .el8
+%el8 1

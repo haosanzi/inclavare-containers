@@ -1,0 +1,15 @@
+%info_requires \
+Requires(post): /sbin/install-info \
+Requires(preun): /sbin/install-info
+
+%info_post() \
+if [ -f %{_infodir}/%1 ]; then # --excludedocs? \
+  /sbin/install-info %{_infodir}/%1 %{_infodir}/dir || : \
+fi
+
+%info_preun() \
+if [ $1 == 0 ]; then \
+  if [ -f %{_infodir}/%1 ]; then # --excludedocs? \
+    /sbin/install-info --delete %{_infodir}/%1 %{_infodir}/dir || : \
+  fi \
+fi

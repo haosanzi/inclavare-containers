@@ -31,7 +31,7 @@ endif
 CC ?= gcc
 GO ?= go
 
-all: ra-tls-server 
+all: libserver.a
 
 ifeq ($(DEBUG),1)
   GCFLAGS=-gcflags "-N -l"
@@ -42,7 +42,12 @@ COMMIT ?= $(if $(shell git status --porcelain --untracked-files=no),"$(COMMIT_NO
 # glibc-static is required for the static linkage
 LDFLAGS := -L$(LIBDIR) -L/opt/intel/sgxsdk/lib64 -Llib -lsgx_uae_service -lsgx_uae_service -lsgx_urts lib/libra-tls-server.a $(LIBDIR)/libcurl-wolfssl.a $(LIBDIR)/libwolfssl.a -lz -lm 
 
-ra-tls-server: ra-tls-server.c lib/libra-tls-server.a
+
+libserver.a: ra-tls-server.o
+	@echo $(AR) rcs $@ $^
+	$(AR) rcs $@ $^
+
+ra-tls-server.o: ra-tls-server.c lib/libra-tls-server.a
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 lib/libra-tls-server.a:
@@ -52,7 +57,7 @@ install: ra-tls-server
 	cp -f inclavared $(BINDIR)
 
 clean:
-	rm -f *.o ra-tls-server
+	rm -f *.o ra-tls-server *.a
 	$(MAKE) -C lib clean
 
 .PHONY: clean install

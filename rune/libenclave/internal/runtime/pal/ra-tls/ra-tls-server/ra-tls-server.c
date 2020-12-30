@@ -34,7 +34,7 @@ int main(){
 	int sockfd;
 	int connd;
 	struct sockaddr_un servAddr;
-	
+
 	if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 		perror("Failed to create the socket.");
 		return -1;
@@ -45,7 +45,7 @@ int main(){
 	/* Fill in the server address */
 	servAddr.sun_family = AF_UNIX;
 	strncpy(servAddr.sun_path, SOCKNAME, sizeof(servAddr.sun_path)-1);
-	
+
 	/* Bind the server socket*/
 	if (bind(sockfd, (struct sockaddr*)&servAddr, sizeof(servAddr)) == -1) {
 		perror("Failed to bind.");
@@ -59,7 +59,7 @@ int main(){
 	}
 
 	printf("Waiting for a connection...\n");
-	
+
 	/* Accept client connections */
 	if ((connd = accept(sockfd, NULL, NULL)) == -1) {
 		perror("Failed to accept the connection.");
@@ -67,7 +67,6 @@ int main(){
 	}
 
 	ra_tls_server_startup(eid, connd);
-	
+
 	return 0;
 }
-

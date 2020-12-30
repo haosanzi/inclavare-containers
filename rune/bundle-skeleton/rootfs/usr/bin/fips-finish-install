@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -e
+
+system_fips=/etc/system-fips
+dracut_cfg_d=/etc/dracut.conf.d
+dracut_cfg=$dracut_cfg_d/40-fips.conf
+
+if test x"$1" !=  x--complete ; then
+	echo "Complete the instalation of FIPS modules."
+	echo "usage: $0 --complete"
+	exit 2
+fi
+
+umask 022
+
+trap "rm -f $system_fips $dracut_cfg" ERR
+
+echo "# FIPS module installation complete" >$system_fips
+
+if test ! -d $dracut_cfg_d ; then
+	# No dracut configuration present, do not try to modify it.
+	exit 0
+fi
+
+cat >$dracut_cfg <<EOF
+# turn on fips module
+
+add_dracutmodules+=" fips "
+EOF
+
+echo "Kernel initramdisks are being regenerated. This might take some time."
+
+dracut -f --regenerate-all

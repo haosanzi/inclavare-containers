@@ -1,0 +1,144 @@
+#!/bin/bash
+
+umask 022
+
+usage=0
+enable_fips=
+check=0
+boot_config=1
+err_if_disabled=0
+fips_install_complete=0
+output_text=1
+
+enable2txt () {
+	case "$1" in
+		0)
+			echo "disabled"
+			;;
+		1)
+			echo "enabled"
+			;;
+	esac
+}
+
+cond_echo () {
+	if test "$output_text" != 0;then
+		echo $*
+	fi
+}
+
+while test $# -ge 1 ; do
+	case "$1" in
+		--enable)
+			enable_fips=1
+			;;
+		--disable)
+			enable_fips=0
+			;;
+		--check)
+			check=1
+			enable_fips=2
+			;;
+		--is-enabled)
+			check=1
+			enable_fips=2
+			err_if_disabled=1
+			output_text=0
+			;;
+		--no-bootcfg)
+			boot_config=0
+			;;
+		*)
+			usage=1
+			;;
+	esac
+	shift
+done
+
+if test $usage = 1 -o x$enable_fips = x ; then
+	echo "Check, enable, or disable the system FIPS mode."
+	echo "usage: $0 --enable|--disable [--no-bootcfg]"
+	echo "usage: $0 --check"
+	echo "usage: $0 --is-enabled"
+	exit 2
+fi
+
+if test -f /etc/system-fips && test x"$(lsinitrd -f etc/system-fips)" != x ; then
+	fips_install_complete=1
+fi
+
+if test $check = 1 ; then
+	test $fips_install_complete = 0 && cond_echo "Installation of FIPS modules is not completed."
+	fips_enabled=$(cat /proc/sys/crypto/fips_enabled)
+	cond_echo "FIPS mode is $(enable2txt $fips_enabled)."
+	if test "$fips_enabled" = 1 && test $fips_install_complete = 0 ; then
+		cond_echo "Inconsistent state detected."
+		exit 1
+	fi
+	if test "$fips_enabled" != 1 && test "$err_if_disabled" = 1;then
+		exit 2
+	fi
+	exit 0
+fi
+
+if test $enable_fips = 1 ; then
+	if test $fips_install_complete = 0 ; then
+		fips-finish-install --complete
+		if test $? != 0 ; then
+			echo "Installation of FIPS modules could not be completed."
+			exit 1
+		fi
+	fi
+	update-crypto-policies --set FIPS 2>/dev/null
+else
+	update-crypto-policies --set DEFAULT 2>/dev/null
+fi
+
+boot_device="$(df -P /boot | tail -1)"
+echo "$boot_device" | grep -q ' /$' && boot_device='/' || boot_device=$(echo "$boot_device" | cut -d ' ' -f 1)
+
+if test x"$boot_device" = x ; then
+	echo "Boot device not identified, you have to configure the bootloader manually."
+	boot_device_opt=" boot=UUID=<your-boot-device-uuid>"
+	boot_config=0
+else
+        if test "$boot_device" = / ; then
+            boot_device_opt=""
+        else
+            boot_device_opt=" boot=UUID=$(blkid -s UUID -o value $boot_device)"
+        fi
+fi
+
+if test $boot_config=1 && test ! -x "$(command -v grubby)" ; then
+	echo "The grubby command is missing, please configure the bootloader manually."
+	boot_config=0
+fi
+
+echo "FIPS mode will be $(enable2txt $enable_fips)."
+
+fipsopts="fips=$enable_fips$boot_device_opt"
+
+if test $boot_config = 0 ; then
+	echo "Now you need to configure the bootloader to add kernel options \"$fipsopts\""
+	echo "and reboot the system for the setting to take effect."
+else
+	default_kernel="$(grubby --default-kernel)"
+	grubby --update-kernel=$default_kernel --args="$fipsopts"
+	if test x"$(uname -m)" = xs390x ; then
+		zipl >/dev/null 2>&1
+	else
+		if test ! -x "$(command -v grub2-editenv)" ; then
+			echo "The grub2-editenv command is missing, please check your bootloader configuration."
+		else
+			kernelopts=$(grub2-editenv list | grep kernelopts | sed 's/^kernelopts=//;s/[ ]*fips=[^ ]*//;s/[ ]*boot=[^ ]*//')
+			if test -z "$kernelopts" ; then
+				echo "No kernelopts in grub2 environment, please check your bootloader configuration."
+			else
+				grub2-editenv - set kernelopts="$kernelopts $fipsopts" || echo "The grub2-editenv command failed, please check your bootloader configuration."
+			fi
+		fi
+	fi
+	echo "Please reboot the system for the setting to take effect."
+fi
+
+exit 0

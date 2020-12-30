@@ -1,0 +1,8 @@
+auto
+/usr/bin/unversioned-python
+unversioned-python-man
+/usr/share/man/man1/python.1.gz
+
+/usr/libexec/no-python
+404
+/usr/share/man/man1/unversioned-python.1.gz

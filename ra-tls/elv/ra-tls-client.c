@@ -104,6 +104,11 @@ int ra_tls_echo(int sockfd)
 
 	if (wolfSSL_connect(ssl) != SSL_SUCCESS) {
 		fprintf(stderr, "ERROR: failed to connect to wolfSSL\n");
+		char err_buffer[80];
+		int err = wolfSSL_get_error(ssl, 0);
+		fprintf(stderr, "************err is: %d\n", err);
+		fprintf(stderr, "*****err string is:%s\n", wolfSSL_ERR_error_string(err, err_buffer));
+		
 		goto err_ssl;
 	}
 

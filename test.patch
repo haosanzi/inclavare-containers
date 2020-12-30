@@ -1,0 +1,106 @@
+diff --git a/rune/libenclave/internal/runtime/pal/skeleton/arch.h b/rune/libenclave/internal/runtime/pal/skeleton/arch.h
+index e518d84..caf27e8 100644
+--- a/rune/libenclave/internal/runtime/pal/skeleton/arch.h
++++ b/rune/libenclave/internal/runtime/pal/skeleton/arch.h
+@@ -432,6 +432,8 @@ struct metadata {
+ 	uint64_t max_mmap_size;
+ 	uint64_t attributes;
+ 	uint64_t xfrm;
++	bool null_dereference_protection;
++	uint64_t mmap_min_addr;
+ } __packed;
+ 
+ /* *INDENT-OFF* */
+diff --git a/rune/libenclave/internal/runtime/pal/skeleton/encl.c b/rune/libenclave/internal/runtime/pal/skeleton/encl.c
+index eeb9764..3b44e1e 100644
+--- a/rune/libenclave/internal/runtime/pal/skeleton/encl.c
++++ b/rune/libenclave/internal/runtime/pal/skeleton/encl.c
+@@ -9,7 +9,9 @@
+ struct metadata m __attribute__((section(".metadata"))) = {
+ 	.max_mmap_size = 0,
+ 	.attributes = 0,
+-	.xfrm = 0
++	.xfrm = 0,
++	.null_dereference_protection = true,
++	.mmap_min_addr = 0
+ };
+ 
+ static void *memcpy(void *dest, const void *src, size_t n)
+diff --git a/rune/libenclave/internal/runtime/pal/skeleton/liberpal-skeleton.c b/rune/libenclave/internal/runtime/pal/skeleton/liberpal-skeleton.c
+index 9ba468c..006a105 100644
+--- a/rune/libenclave/internal/runtime/pal/skeleton/liberpal-skeleton.c
++++ b/rune/libenclave/internal/runtime/pal/skeleton/liberpal-skeleton.c
+@@ -132,6 +132,7 @@ static int create_enclave_range(int dev_fd, uint64_t mmap_size,
+ 		       "vm.mmap_min_addr=0 will violate the security "
+ 		       "requirements of non-enclave application.\n");
+ 
++	printf("**********encl_offset is %ld\n", encl_offset);
+ 	encl_size = pow2(encl_offset + mmap_size);
+ 	flags |= MAP_FIXED;
+ 
+diff --git a/rune/libenclave/internal/runtime/pal/skeleton/sgxsign.c b/rune/libenclave/internal/runtime/pal/skeleton/sgxsign.c
+index 7dfdb9d..738e74f 100644
+--- a/rune/libenclave/internal/runtime/pal/skeleton/sgxsign.c
++++ b/rune/libenclave/internal/runtime/pal/skeleton/sgxsign.c
+@@ -519,18 +519,23 @@ int main(int argc, char **argv)
+ 	RSA *sign_key;
+ 	bool enclave_debug = true;
+ 	struct metadata meta_data;
+-	char *const short_options = "ps:x:a:";
++	char *const short_options = "ps:x:a:n:";
+ 	struct option long_options[] = {
+ 		{"product", no_argument, NULL, 'p'},
+ 		{"mmap-size", required_argument, NULL, 's'},
+ 		{"xfrm", required_argument, NULL, 'x'},
+ 		{"attr", required_argument, NULL, 'a'},
++		{"null_dereference_protection", required_argument, NULL, 'n'},
++		{"mmap_min_addr", required_argument, NULL, 'd'},	
+ 		{0, 0, 0, 0}
+ 	};
+ 
+ 	program = argv[0];
+ 	memset(&meta_data, 0, sizeof(struct metadata));
+ 
++	/* Null_dereference_protection is default on. User can set `-n 0` to close.*/
++	meta_data.null_dereference_protection = true;
++
+ 	do {
+ 		opt = getopt_long(argc, argv, short_options, long_options,
+ 				  NULL);
+@@ -547,6 +552,12 @@ int main(int argc, char **argv)
+ 		case 'a':
+ 			meta_data.attributes = atoi(optarg);
+ 			break;
++		case 'n':
++			meta_data.null_dereference_protection = atoi(optarg);
++			break;
++		case 'd':
++			meta_data.mmap_min_addr = atoi(optarg);
++			break;
+ 		case -1:
+ 			break;
+ 		default:
+@@ -586,6 +597,8 @@ int main(int argc, char **argv)
+ 	ss.body.xfrm_mask = ss.body.xfrm;
+ 	ss.body.miscselect = get_sgx_miscselect_by_cpuid();
+ 
++	if (!meta_data.mmap_min_addr)
++		meta_data.mmap_min_addr = mmap_min_addr;
+ 	/* sanity check only */
+ 	if (check_crypto_errors())
+ 		exit(1);
+@@ -595,11 +608,13 @@ int main(int argc, char **argv)
+ 		goto out;
+ 
+ 	BN_bn2bin(get_modulus(sign_key), ss.modulus);
++	
++	printf("**************************\n*meta_data.null_dereference_protection is %d\n", meta_data.null_dereference_protection);
+ 
+ 	/* *INDENT-OFF* */
+ 	if (!measure_encl(argv[1], ss.body.mrenclave, ss.body.miscselect,
+ 			  ss.body.xfrm, &meta_data, mmap_min_addr,
+-			  !is_oot_kernel_driver()))
++			  meta_data.null_dereference_protection))
+ 		goto out;
+ 	/* *INDENT-ON* */
+ 
