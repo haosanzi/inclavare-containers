@@ -10,9 +10,30 @@ export QUOTE_TYPE=<SGX_LINKABLE_SIGNATURE | SGX_UNLINKABLE_SIGNATURE>
 sudo yum install -y glibc-static
 cd $src/ra-tls
 make
+export LD_LIBRARY_PATH=$src/ra-tls/build/lib
 ```
 
-# Run
+# Run with SGX remote attestation
+## Run with epid attestation mode
+``` shell
+mkdir -p /run/rune
+cd build/bin
+./ra-tls-server run --quote-type epid &
+
+# Run client with SGX
+./elv echo --quote-type epid
+# Run client without SGX
+./elv echo
+```
+
+Please use the following commands to make client and server perform mutual attestation mutual attestation.
+
+```shell
+./ra-tls-server run --quote-type epid --mutual &
+./elv echo --quote-type epid --mutual
+```
+
+# Run general TLS without SGX
 ``` shell
 mkdir -p /run/rune
 cd build/bin

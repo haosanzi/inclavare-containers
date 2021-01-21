@@ -6,6 +6,7 @@ SGX_MODE ?= HW
 SGX_ARCH ?= x64
 SGX_DEBUG ?= 1
 
+TOPDIR = ../..
 WOLFSSL_ROOT := $(shell readlink -f $(TOPDIR)/wolfssl)
 THISDIR := $(shell pwd)
 
@@ -40,13 +41,10 @@ Library_Name := sgx_ra_tls_wolfssl
 Wolfssl_C_Extra_Flags := -DSGX_SDK -DWOLFSSL_SGX -DWOLFSSL_SGX_ATTESTATION -DUSER_TIME -DWOLFSSL_CERT_EXT -DFP_MAX_BITS=8192
 
 Wolfssl_C_Files := \
-	wolfssl-ra-attester.c \
-	wolfssl-ra-challenger.c \
-	sgxsdk-ra-attester_t.c \
-	ra-challenger.c \
-	wolfssl-ra.c \
-	ra_tls_t.c \
-	ra_tls_options.c
+	trusted/wolfssl-ra-attester.c \
+	trusted/sgxsdk-ra-attester_t.c \
+	trusted/ra_tls_t.c \
+	trusted/ra_tls_options.c
 
 Wolfssl_Include_Paths := \
 	-I$(WOLFSSL_ROOT) \
@@ -58,32 +56,37 @@ Wolfssl_Include_Paths := \
 
 Compiler_Warnings := -Wall -Wextra -Wwrite-strings -Wlogical-op -Wshadow
 Flags_Just_For_C := -Wno-implicit-function-declaration -std=c11
-Common_C_Cpp_Flags := $(SGX_COMMON_CFLAGS) -nostdinc -fvisibility=hidden -fpie -fstack-protector $(Wolfssl_Include_Paths) -fno-builtin-printf -I.
+Common_C_Cpp_Flags := $(SGX_COMMON_CFLAGS) -nostdinc -fvisibility=default -fpie -fstack-protector $(Wolfssl_Include_Paths) -fno-builtin-printf -I.
 Wolfssl_C_Flags := $(Compiler_Warnings) $(Flags_Just_For_C) $(Common_C_Cpp_Flags) $(Wolfssl_C_Extra_Flags)
 
 Wolfssl_C_Objects := $(Wolfssl_C_Files:.c=.o)
-
 CFLAGS += $(Wolfssl_C_Flags)
 
 .PHONY: all run clean mrproper
 
 all: libsgx_ra_tls_wolfssl.a
-
 ######## Library Objects ########
 
-ra_tls_t.c ra_tls_u.c ra_tls_t.h ra_tls_u.h : ra_tls.edl
-	$(SGX_EDGER8R) $^ --search-path $(SGX_SDK)/include
+trusted/ra_tls_t.c : trusted/ra_tls.edl
+	cd ./trusted && $(SGX_EDGER8R) --trusted ra_tls.edl --search-path $(SGX_SDK)/include
 
-libsgx_ra_tls_wolfssl.a: ra_tls_t.o ra_tls_u.o $(Wolfssl_C_Objects)
-	ar rcs $@ $(Wolfssl_C_Objects)
+trusted/ra-common.o: ../ra-common.c
+	$(CC) $(CFLAGS) -c $< -o $@ 
+
+trusted/wolfssl-ra-attester-common.o: ../wolfssl-ra-attester-common.c
+	 $(CC) $(CFLAGS) -c $< -o $@
+
+libsgx_ra_tls_wolfssl.a: trusted/ra-common.o trusted/wolfssl-ra-attester-common.o trusted/ra_tls_t.o $(Wolfssl_C_Objects)
+	ar rcs $@ $(Wolfssl_C_Objects) trusted/ra-common.o trusted/wolfssl-ra-attester-common.o
 	@echo "LINK =>  $@"
+	cp libsgx_ra_tls_wolfssl.a $(TOPDIR)/build/lib
 
-ra_tls_options.c: ra_tls_options.c.sh
+trusted/ra_tls_options.c: trusted/ra_tls_options.c.sh
 	bash $^ > $@
 
 clean:
 	@rm -f $(Wolfssl_C_Objects)
-	@rm -f ra_tls_options.c ra_tls_t.* ra_tls_u.* libsgx_ra_tls_wolfssl.a
+	@rm -f trusted/ra_tls_options.c trusted/ra_tls_t.* trusted/libsgx_ra_tls_wolfssl.a *.a
 
 mrproper: clean
-	@rm -f ra_tls_options.c ra_tls_t.c ra_tls_t.h ra_tls_u.h ra_tls_u.c libsgx_ra_tls_wolfssl.a
+	@rm -f trusted/ra_tls_options.c trusted/ra_tls_t.c trusted/ra_tls_t.h trusted/lib*_ra_tls_wolfssl.a *.a

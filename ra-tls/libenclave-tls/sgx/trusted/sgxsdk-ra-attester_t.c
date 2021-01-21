@@ -8,6 +8,11 @@
 #include "ra_private.h"
 #include "ra_tls_t.h" // OCALLs
 
+/* This function only exists to make edger8r happy. There must be at
+   least one trusted (ECALL) function. */
+void dummy(void) {
+}
+
 /* Trusted portion (called from within the enclave) to do remote
    attestation with the SGX SDK.  */
 void do_remote_attestation

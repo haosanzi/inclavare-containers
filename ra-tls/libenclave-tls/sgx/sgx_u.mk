@@ -1,5 +1,5 @@
 ######## Intel(R) SGX SDK Settings ########
-TOPDIR ?= ../../
+TOPDIR ?= ../..
 LIBDIR ?= $(TOPDIR)/build/lib
 SGX_SDK ?= /opt/intel/sgxsdk
 SGX_MODE ?= HW
@@ -7,7 +7,7 @@ SGX_DEBUG ?= 1
 SGX_ARCH ?= x64
 WOLFSSL_ROOT ?= $(shell readlink -f $(TOPDIR)/wolfssl)
 SGX_WOLFSSL_LIB ?= $(shell readlink -f $(WOLFSSL_ROOT)/IDE/LINUX-SGX)
-SGX_RA_TLS_ROOT ?= $(shell readlink -f $(TOPDIR)/sgx-ra-tls)
+SGX_RA_TLS_ROOT ?= $(shell readlink -f $(TOPDIR)/libenclave-tls/sgx/trusted)
 
 ifeq ($(shell getconf LONG_BIT), 32)
 	SGX_ARCH := x86
@@ -61,7 +61,13 @@ ifeq ($(HAVE_WOLFSSL_BENCHMARK), 1)
 	Wolfssl_C_Extra_Flags += -DHAVE_WOLFSSL_BENCHMARK
 endif
 
-App_C_Files := App.c ra-tls-server.c sgxsdk-ra-attester_u.c ias-ra.c
+App_C_Files := untrusted/App.c \
+	untrusted/ra.c \
+	untrusted/sgxsdk-ra-attester_u.c \
+	untrusted/ias-ra.c \
+	untrusted/wolfssl-ra-challenger.c \
+	untrusted/ra-challenger.c \
+	untrusted/ias_sign_ca_cert.c
 App_Include_Paths := $(Wolfssl_Include_Paths) -I$(SGX_SDK)/include -I$(SGX_RA_TLS_ROOT) -I$(INCDIR) -I$(shell readlink -f .)
 
 App_C_Flags := $(SGX_COMMON_CFLAGS) -fPIC -shared -Wno-attributes -Wall -Wno-unused-const-variable $(App_Include_Paths) $(Wolfssl_C_Extra_Flags)
@@ -88,29 +94,30 @@ endif
 endif
 endif
 
+HOST_LDFLAGS := -fPIC -shared -Wl,-Bsymbolic
+
 .PHONY: all
 
-all: libra-tls-server.a
+all: libenclave-tls-sgx.so
 
-Wolfssl_Enclave_u.c: $(SGX_EDGER8R) $(TOPDIR)/stub-enclave/Wolfssl_Enclave.edl
-	@$(SGX_EDGER8R) --untrusted $(TOPDIR)/stub-enclave/Wolfssl_Enclave.edl --search-path $(TOPDIR)/stub-enclave --search-path $(SGX_SDK)/include --search-path $(SGX_RA_TLS_ROOT)
+untrusted/Wolfssl_Enclave_u.c: $(SGX_EDGER8R) $(TOPDIR)/stub-enclave/Wolfssl_Enclave.edl
+	@cd untrusted && $(SGX_EDGER8R) --untrusted $(TOPDIR)/stub-enclave/Wolfssl_Enclave.edl --search-path $(TOPDIR)/stub-enclave --search-path $(SGX_SDK)/include --search-path $(SGX_RA_TLS_ROOT)
 	@echo "GEN  =>  $@"
 
-Wolfssl_Enclave_u.o: Wolfssl_Enclave_u.c
+untrusted/Wolfssl_Enclave_u.o: untrusted/Wolfssl_Enclave_u.c
 	@echo $(CC) $(App_C_Flags) -c $< -o $@
 	@$(CC) $(App_C_Flags) -c $< -o $@
 	@echo "CC   <=  $<"
 
-%.o: %.c
+untrusted/%.o: untrusted/%.c
 	@echo $(CC) $(App_C_Flags) -c $< -o $@
 	@$(CC) $(App_C_Flags) -c $< -o $@
 	@echo "CC  <=  $<"
 
-libra-tls-server.a: Wolfssl_Enclave_u.o $(App_C_Objects) $(LIBDIR)/libcurl-wolfssl.a $(LIBDIR)/libwolfssl.a
-	$(AR) rcs $@ $^
-	@echo "LINK =>  $@"
+libenclave-tls-sgx.so: untrusted/Wolfssl_Enclave_u.o $(App_C_Objects) $(LIBDIR)/libcurl-wolfssl.a $(LIBDIR)/libwolfssl.a
+	$(CC) $(HOST_LDFLAGS) -o $@ $^ -lm -lz -lsgx_urts -lsgx_uae_service -L../ -lenclave-tls
 
 .PHONY: clean
 
 clean:
-	@rm -f libra-tls-server.* $(App_C_Objects) Wolfssl_Enclave_u.* 
+	@rm -f untrusted/libenclave-tls-sgx.so libenclave-tls-sgx.so $(App_C_Objects) untrusted/Wolfssl_Enclave_u.*

@@ -8,19 +8,7 @@ BINDIR := $(PREFIX)/bin
 LIBDIR := $(PREFIX)/lib
 INCDIR := $(PREFIX)/include
 
-SGX_SDK ?= /opt/intel/sgxsdk
-SGX_RA_TLS := $(TOPDIR)/sgx-ra-tls
-
-ifdef ECDSA
-  SGX_DCAP_URI := https://github.com/intel/SGXDataCenterAttestationPrimitives
-  SGX_DCAP_COMMIT := bfab1376480f760757738092399d0d99b22f4dfd
-  SGX_DCAP ?= SGXDataCenterAttestationPrimitives
-  SGX_DCAP_INC := -I$(SGX_DCAP)/QuoteGeneration/quote_wrapper/common/inc -I$(SGX_DCAP)/QuoteGeneration/pce_wrapper/inc -I$(SGX_DCAP)/QuoteVerification/Src/AttestationLibrary/include
-endif
-
-#EPID_SDK := $(SGX_SDK)/external/epid-sdk
-
-CFLAGS += -std=gnu99 -I$(SGX_RA_TLS) -I$(SGX_SDK)/include -I$(INCDIR) $(SGX_DCAP_INC) -fPIC
+CFLAGS += -std=gnu99 -I$(INCDIR) -fPIC
 #CFLAGSERRORS := -Wall -Wextra -Wwrite-strings -Wlogical-op -Wshadow -Werror
 CFLAGS += $(CFLAGSERRORS) -g -O0 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_CERT_EXT # -DDEBUG -DDYNAMIC_RSA
 CFLAGS += -DSGX_GROUP_OUT_OF_DATE
@@ -48,17 +36,13 @@ GO_BUILD := CGO_ENABLED=1 $(GO) build $(MOD_VENDOR) -buildmode=pie $(GCFLAGS) $(
 #GO_BUILD := CGO_ENABLED=1 $(GO) build $(MOD_VENDOR) $(GCFLAGS) $(EXTRA_FLAGS) \
         -ldflags "-w -extldflags -static -X main.gitCommit=$(COMMIT) -X main.version=$(VERSION) $(EXTRA_LDFLAGS)"
 
-ra-tls-server: lib/libra-tls-server.a
+ra-tls-server: ra-tls-server.c
 	$(GO_BUILD) -o $@ .
-
-lib/libra-tls-server.a:
-	make -C lib 
 
 install: ra-tls-server
 	cp -f inclavared $(BINDIR)
 
 clean:
 	rm -f *.o ra-tls-server
-	$(MAKE) -C lib clean
 
 .PHONY: clean install

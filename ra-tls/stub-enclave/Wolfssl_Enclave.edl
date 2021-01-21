@@ -6,12 +6,14 @@ enclave {
 
 	include "wolfcrypt/test/test.h"
 	include "wolfcrypt/benchmark/benchmark.h"
-	from "ra_tls.edl" import *;
+	include "../libenclave-tls/enclave-tls.h"
+
+	from "ra_tls.edl" import ocall_sgx_init_quote, ocall_remote_attestation;
 	trusted {
 		public int wc_test([user_check]void* args);
 		public int wc_benchmark_test([user_check]void* args);
 
-		public int enc_wolfSSL_Init(void);
+		public int enc_wolfSSL_Init(quote_type_t quote_type);
 		public void enc_wolfSSL_Debugging_ON(void);
 		public void enc_wolfSSL_Debugging_OFF(void);
 		public WOLFSSL_METHOD* enc_wolfTLSv1_2_client_method(void);
@@ -50,6 +52,11 @@ enclave {
 		public void enc_wolfSSL_CTX_free([user_check]WOLFSSL_CTX* ctx);
 		public int enc_wolfSSL_Cleanup(void);
 		public void enc_create_key_and_x509([user_check]WOLFSSL_CTX* ctx);
+		public void enc_wolfSSL_CTX_set_verify([user_check]WOLFSSL_CTX* ctx, int mode);
+		public int enc_wolfSSL_negotiate ([user_check]WOLFSSL* ssl);
+		public WOLFSSL_X509* enc_wolfSSL_get_peer_certificate([user_check]WOLFSSL* ssl);
+		public unsigned char* enc_wolfSSL_X509_get_der([user_check]WOLFSSL_X509* x509, [user_check]int* outSz);
+		public void encl_get_der_content([user_check]char* source, [out, size=len]char* buf, size_t len);
 	};
 
 	untrusted {
@@ -59,5 +66,6 @@ enclave {
 		void ocall_low_res_time([out] int* time);
 		size_t ocall_recv(int sockfd, [out, size=len] void *buf, size_t len, int flags) propagate_errno;
 		size_t ocall_send(int sockfd, [in, size=len] const void *buf, size_t len, int flags) propagate_errno;
+		int ocall_verify_sgx_cert_extensions([in, out, size=der_crt_len]uint8_t* der_crt, uint32_t der_crt_len);
 	};
 };

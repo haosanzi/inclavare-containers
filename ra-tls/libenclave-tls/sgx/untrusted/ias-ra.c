@@ -7,14 +7,14 @@
 #include <curl/curl.h>
 
 #if defined(USE_OPENSSL)
-#include <openssl/evp.h>	// for base64 encode/decode
+#  include <openssl/evp.h>	// for base64 encode/decode
 #elif defined(USE_WOLFSSL)
-#include <wolfssl/options.h>
-#include <wolfssl/wolfcrypt/coding.h>
+#  include <wolfssl/options.h>
+#  include <wolfssl/wolfcrypt/coding.h>
 #elif defined(USE_MBEDTLS)
-#include <mbedtls/base64.h>
+#  include <mbedtls/base64.h>
 #else
-#error Must use one of OpenSSL/wolfSSL/mbedtls
+#  error Must use one of OpenSSL/wolfSSL/mbedtls
 #endif
 
 #include <stdint.h>
@@ -24,54 +24,17 @@
 #include "ra.h"
 #include "ra-attester.h"
 #include "ias-ra.h"
-#include "curl_helper.h"
-
-static
-size_t accumulate_function(void *ptr, size_t size, size_t nmemb, void *userdata)
-{
-	struct buffer_and_size *s = (struct buffer_and_size *)userdata;
-	s->data = (char *)realloc(s->data, s->len + size * nmemb);
-	assert(s->data != NULL);
-	memcpy(s->data + s->len, ptr, size * nmemb);
-	s->len += size * nmemb;
-
-	return size * nmemb;
-}
-
-void http_get
-    (CURL * curl,
-     const char *url,
-     struct buffer_and_size *header,
-     struct buffer_and_size *body,
-     struct curl_slist *request_headers, char *request_body) {
-	curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
-	curl_easy_setopt(curl, CURLOPT_URL, url);
-	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 1L);
-
-	curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, accumulate_function);
-	curl_easy_setopt(curl, CURLOPT_HEADERDATA, header);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, accumulate_function);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, body);
-
-	if (request_headers) {
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, request_headers);
-	}
-	if (request_body) {
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body);
-	}
-
-	CURLcode res = curl_easy_perform(curl);
-	assert(res == CURLE_OK);
-}
+#include "../../curl_helper.h"
 
 static const char pem_marker_begin[] = "-----BEGIN CERTIFICATE-----";
 static const char pem_marker_end[] = "-----END CERTIFICATE-----";
 
 static
-void extract_certificates_from_response_header
-    (CURL * curl,
-     const char *header,
-     size_t header_len, attestation_verification_report_t * attn_report) {
+void extract_certificates_from_response_header(CURL *curl, const char *header,
+					       size_t header_len,
+					       attestation_verification_report_t
+					       *attn_report)
+{
 	// Locate x-iasreport-signature HTTP header field in the response.
 	const char response_header_name[] = "X-IASReport-Signing-Certificate: ";
 	char *field_begin = memmem(header,
@@ -119,7 +82,7 @@ void extract_certificates_from_response_header
 	cert_len = cert_end - cert_begin + strlen(pem_marker_end);
 
 	assert(cert_len <= sizeof(attn_report->ias_sign_ca_cert));
-	memcpy((char *)attn_report->ias_sign_ca_cert, cert_begin, cert_len);
+	memcpy((char *) attn_report->ias_sign_ca_cert, cert_begin, cert_len);
 	attn_report->ias_sign_ca_cert_len = cert_len;
 
 	curl_free(unescaped);
@@ -127,13 +90,13 @@ void extract_certificates_from_response_header
 }
 
 /* The header has the certificates and report signature. */
-void parse_response_header
-    (const char *header,
-     size_t header_len,
-     unsigned char *signature,
-     const size_t signature_max_size, uint32_t * signature_size) {
+void parse_response_header(const char *header, size_t header_len,
+			   unsigned char *signature,
+			   const size_t signature_max_size,
+			   uint32_t *signature_size)
+{
 	const char sig_tag[] = "X-IASReport-Signature: ";
-	char *sig_begin = memmem((const char *)header,
+	char *sig_begin = memmem((const char *) header,
 				 header_len,
 				 sig_tag,
 				 strlen(sig_tag));
@@ -153,8 +116,8 @@ void parse_response_header
 /**
  * @return Length of base64 encoded data including terminating NUL-byte.
  */
-static void base64_encode(uint8_t * in, uint32_t in_len, uint8_t * out, uint32_t * out_len	/* in/out */
-    )
+static void base64_encode(uint8_t *in, uint32_t in_len, uint8_t *out,
+			  uint32_t *out_len)
 {
 	// + 1 to account for the terminating \0.
 	assert(*out_len >= (in_len + 3 - 1) / 3 * 4 + 1);
@@ -184,25 +147,26 @@ static void base64_encode(uint8_t * in, uint32_t in_len, uint8_t * out, uint32_t
 
   Communicates with Intel Attestation Service via its HTTP REST interface.
 */
-void obtain_attestation_verification_report
-    (const sgx_quote_t * quote,
-     const uint32_t quote_size,
-     const struct ra_tls_options *opts,
-     attestation_verification_report_t * attn_report) {
+void obtain_attestation_verification_report(const sgx_quote_t *quote,
+					    const uint32_t quote_size,
+					    const struct ra_tls_options *opts,
+					    attestation_verification_report_t *
+					    attn_report)
+{
 	int ret;
 
 	char url[512];
 	ret = snprintf(url, sizeof(url), "https://%s/attestation/v3/report",
 		       opts->ias_server);
-	assert(ret < (int)sizeof(url));
+	assert(ret < (int) sizeof(url));
 
 	char buf[128];
 	int rc = snprintf(buf, sizeof(buf), "Ocp-Apim-Subscription-Key: %.32s",
 			  opts->subscription_key);
-	assert(rc < (int)sizeof(buf));
+	assert(rc < (int) sizeof(buf));
 
 	struct curl_slist *request_headers =
-	    curl_slist_append(NULL, "Content-Type: application/json");
+		curl_slist_append(NULL, "Content-Type: application/json");
 	request_headers = curl_slist_append(request_headers, buf);
 
 	const char json_template[] = "{\"isvEnclaveQuote\":\"%s\"}";
@@ -217,8 +181,8 @@ void obtain_attestation_verification_report
 
 	CURL *curl = curl_easy_init();
 	assert(curl != NULL);
-	struct buffer_and_size header = { (char *)malloc(1), 0 };
-	struct buffer_and_size body = { (char *)malloc(1), 0 };
+	struct buffer_and_size header = { (char *) malloc(1), 0 };
+	struct buffer_and_size body = { (char *) malloc(1), 0 };
 	http_get(curl, url, &header, &body, request_headers, json);
 
 	parse_response_header(header.data, header.len,

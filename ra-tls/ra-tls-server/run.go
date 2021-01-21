@@ -1,36 +1,20 @@
 package main // import "github.com/inclavare-containers/inclavared"
 
 /*
-#cgo CFLAGS: -I../build/include -I/opt/intel/sgxsdk/include -I../sgx-ra-tls
-#cgo LDFLAGS: -L../build/lib -L/opt/intel/sgxsdk/lib64 -Llib -lra-tls-server -l:libcurl-wolfssl.a -l:libwolfssl.a -lsgx_uae_service -lsgx_urts -lz -lm
+#cgo CFLAGS: -I../build/include
+#cgo LDFLAGS: -L../build/lib -lenclave-tls -lm
 
-#include <stdio.h>
-#include <string.h>
-#include "sgx_urts.h"
+#include <stdbool.h>
+ #include "enclave-tls.h"
 
-extern int ra_tls_server_startup(sgx_enclave_id_t id, int sockfd);
-
-static sgx_enclave_id_t load_enclave(void)
-{
-	sgx_launch_token_t t;
-        memset(t, 0, sizeof(t));
-
-        sgx_enclave_id_t id;
-        int updated = 0;
-        int ret = sgx_create_enclave("Wolfssl_Enclave.signed.so", 1, &t, &updated, &id, NULL);
-        if (ret != SGX_SUCCESS) {
-                fprintf(stderr, "Failed to create Enclave: error %d\n", ret);
-                return -1;
-        }
-
-	return id;
-}
+extern int ra_tls_server_startup(int sockfd, quote_type_t quote_type, bool mutual, bool debug);
 */
 import "C"
 import (
 	"fmt"
 	"github.com/urfave/cli"
 	"net"
+	"strings"
 	"syscall"
 )
 
@@ -59,10 +43,35 @@ EXAMPLE:
 			Name:  "addr",
 			Usage: "the timeout in second for re-establishing the connection to inclavared",
 		},
+		cli.StringFlag{
+			Name:  "quote-type",
+			Usage: "specify the quote type such as epid and ecdsa",
+		},
+		cli.BoolFlag{
+			Name:  "mutual",
+			Usage: "Enable mutual enclave TLS. Disabled by default.",
+		},
+		cli.BoolFlag{
+			Name:  "debug",
+			Usage: "Enable debug mode. Disabled by default.",
+		},
 	},
 	SkipArgReorder: true,
 	Action: func(cliContext *cli.Context) error {
-		eid := C.load_enclave()
+		quoteType := 0
+		if strings.EqualFold(cliContext.String("quote-type"), "epid") {
+			quoteType = C.QUOTE_TYPE_EPID
+		}
+
+		mutual := false
+		if cliContext.Bool("mutual") {
+			mutual = true
+		}
+
+		debug := false
+		if cliContext.Bool("debug") {
+			debug = true
+		}
 
 		addr := cliContext.String("addr")
 		if addr == "" {
@@ -102,7 +111,7 @@ EXAMPLE:
 		}
 		defer connFile.Close()
 
-		C.ra_tls_server_startup(eid, C.int(connFile.Fd()))
+		C.ra_tls_server_startup(C.int(connFile.Fd()), C.quote_type_t(quoteType), C.bool(mutual), C.bool(debug))
 
 		return nil
 	},

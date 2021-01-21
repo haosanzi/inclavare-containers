@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <stdio.h>
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 #include <wolfssl/wolfcrypt/asn.h>
@@ -22,7 +22,6 @@
 #endif
 
 #include "ra.h"
-#include "wolfssl-ra.h"
 #include "ra-challenger.h"
 #include "ra-challenger_private.h"
 
@@ -379,7 +378,7 @@ int verify_sgx_cert_extensions
 {
     if (is_epid_ratls_cert(der_crt, der_crt_len)) {
         return epid_verify_sgx_cert_extensions(der_crt, der_crt_len);
-    } else {
+        } else {
 #ifdef RATLS_ECDSA
         return ecdsa_verify_sgx_cert_extensions(der_crt, der_crt_len);
 #endif

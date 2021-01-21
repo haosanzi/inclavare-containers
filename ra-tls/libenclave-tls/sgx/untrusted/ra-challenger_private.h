@@ -23,29 +23,11 @@ void get_quote_from_extension
     sgx_quote_t* q
 );
 
-int find_oid
-(
-     const unsigned char* ext, size_t ext_len,
-     const unsigned char* oid, size_t oid_len,
-     unsigned char** val, size_t* len
-);
-
 void extract_x509_extensions
 (
     const uint8_t* ext,
     int ext_len,
     attestation_verification_report_t* attn_report
-);
-
-int extract_x509_extension
-(
-    const uint8_t* ext,
-    int ext_len,
-    const uint8_t* oid,
-    size_t oid_len,
-    uint8_t* data,
-    uint32_t* data_len,
-    uint32_t data_max_len
 );
 
 void ecdsa_extract_x509_extensions

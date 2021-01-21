@@ -1,10 +1,11 @@
 ######## Intel(R) SGX SDK Settings ########
+TOPDIR = ..
 SGX_SDK ?= /opt/intel/sgxsdk
 SGX_MODE ?= HW
 SGX_DEBUG ?= 1
 SGX_ARCH ?= x64
 WOLFSSL_ROOT ?= $(TOPDIR)/wolfssl
-SGX_RA_TLS_ROOT=$(shell readlink -f $(TOPDIR)/sgx-ra-tls)
+SGX_RA_TLS_ROOT=$(shell readlink -f $(TOPDIR)/libenclave-tls/sgx/trusted)
 SGX_WOLFSSL_LIB ?= $(TOPDIR)/build/lib
 SGX_RA_TLS_LIB ?= $(shell readlink -f $(TOPDIR)/build/lib)
 
@@ -74,8 +75,8 @@ Wolfssl_Enclave_C_Flags := $(Flags_Just_For_C) $(Common_C_Cpp_Flags) $(Wolfssl_C
 
 Wolfssl_Enclave_Link_Flags := $(SGX_COMMON_CFLAGS) -Wl,--no-undefined -nostdlib \
 	-nodefaultlibs -nostartfiles -L$(SGX_LIBRARY_PATH) \
-	-L$(SGX_RA_TLS_LIB) -lsgx_ra_tls_wolfssl \
 	-L$(SGX_WOLFSSL_LIB) -lwolfssl.sgx.static.lib \
+	-L$(SGX_RA_TLS_LIB) -lsgx_ra_tls_wolfssl \
 	-Wl,--whole-archive -l$(Trts_Library_Name) -Wl,--no-whole-archive \
 	-Wl,--start-group -lsgx_tstdc -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
 	-Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \

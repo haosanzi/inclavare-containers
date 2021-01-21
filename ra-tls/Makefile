@@ -10,7 +10,7 @@ LIBDIR := $(PREFIX)/lib
 INCDIR := $(PREFIX)/include
 
 SGX_SDK ?= /opt/intel/sgxsdk
-SGX_RA_TLS := $(TOPDIR)/sgx-ra-tls
+SGX_RA_TLS := $(TOPDIR)/libenclave-tls
 WOLFSSL := $(TOPDIR)/wolfssl
 ELV := $(TOPDIR)/elv
 RA_TLS_SERVER := $(TOPDIR)/ra-tls-server
@@ -37,13 +37,13 @@ CC ?= gcc
 
 export DEBUG PREFIX BINDIR LIBDIR INCDIR SGX_SDK SGX_RA_TLS WOLFSSL CC
 
-deps := $(LIBDIR)/libwolfssl.sgx.static.lib.a $(LIBDIR)/libsgx_ra_tls_wolfssl.a $(LIBDIR)/libcurl-wolfssl.a
+deps := $(LIBDIR)/libwolfssl.sgx.static.lib.a $(LIBDIR)/libenclave-tls.so $(LIBDIR)/libsgx_ra_tls_wolfssl.a $(LIBDIR)/libenclave-tls-sgx.so $(LIBDIR)/libcurl-wolfssl.a
 all: $(deps) $(BINDIR)/elv $(BINDIR)/ra-tls-server $(BINDIR)/Wolfssl_Enclave.signed.so
 
-$(BINDIR)/elv: $(BINDIR) $(LIBDIR)/libra-challenger.a $(LIBDIR)/libwolfssl.a
+$(BINDIR)/elv: $(BINDIR) $(LIBDIR)/libenclave-tls.so
 	make -C $(ELV) && cp -f $(ELV)/elv $@
 
-$(BINDIR)/ra-tls-server: $(BINDIR) $(LIBDIR)/libcurl-wolfssl.a $(LIBDIR)/libwolfssl.a
+$(BINDIR)/ra-tls-server: $(BINDIR) $(LIBDIR)/libenclave-tls.so
 	make -C $(RA_TLS_SERVER) && cp -f $(RA_TLS_SERVER)/ra-tls-server $@
 
 $(BINDIR)/Wolfssl_Enclave.signed.so: $(BINDIR)
@@ -83,17 +83,14 @@ $(LIBDIR)/libra-challenger.a: $(LIBDIR) $(LIBDIR)/libwolfssl.a $(SGX_RA_TLS)/ra.
 # -DFP_MAX_BITS=8192 required for RSA keys > 2048 bits to work
 $(LIBDIR)/libwolfssl.sgx.static.lib.a: $(LIBDIR) $(LIBDIR)/libwolfssl.a
 	cd wolfssl/IDE/LINUX-SGX && \
-	  make -f sgx_t_static.mk CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT -DFP_MAX_BITS=8192" && \
+	  make -f sgx_t_static.mk CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT -DFP_MAX_BITS=8192 -DKEEP_PEER_CERT" && \
 	  cp -f libwolfssl.sgx.static.lib.a "$@"
 
-$(LIBDIR)/libsgx_ra_tls_wolfssl.a: $(LIBDIR)
-# Previous Makefile compiles these .o files with incorrect C flags
-# Don't disturb the build of libsgx_ra_tls_wolfssl.a
-	rm -f $(SGX_RA_TLS)/wolfssl-ra-challenger.o $(SGX_RA_TLS)/wolfssl-ra.o $(SGX_RA_TLS)/ra-challenger.o $(SGX_RA_TLS)/ias_sign_ca_cert.o
-	$(MAKE) -C $(SGX_RA_TLS) && \
-	  mv -f $(SGX_RA_TLS)/libsgx_ra_tls_wolfssl.a "$@"
-# Don't disturb the build of libra-challenger.a
-	rm -f $(SGX_RA_TLS)/wolfssl-ra-challenger.o $(SGX_RA_TLS)/wolfssl-ra.o $(SGX_RA_TLS)/ra-challenger.o $(SGX_RA_TLS)/ias_sign_ca_cert.o
+$(LIBDIR)/libenclave-tls.so: $(LIBDIR) $(LIBDIR)/libcurl-wolfssl.a $(LIBDIR)/libwolfssl.a
+	cd $(SGX_RA_TLS) && make && make install
+
+$(LIBDIR)/libsgx_ra_tls_wolfssl.a $(LIBDIR)/libenclave-tls-sgx.so: $(LIBDIR)
+	cd $(SGX_RA_TLS)/sgx && make && cp -f libenclave-tls-sgx.so libsgx_ra_tls_wolfssl.a $(LIBDIR)
 
 $(LIBDIR)/libcurl-wolfssl.a: $(LIBDIR) curl-wolfssl $(LIBDIR)/libwolfssl.a
 	cd curl-wolfssl && $(MAKE) && \
@@ -136,6 +133,7 @@ clean:
 	[ -d wolfssl ] && $(MAKE) clean -C wolfssl || true
 	$(MAKE) -C stub-enclave clean
 	$(MAKE) -C $(SGX_RA_TLS) clean
+	$(MAKE) -C $(SGX_RA_TLS)/sgx clean
 	$(MAKE) -C $(ELV) clean
 	$(MAKE) -C $(RA_TLS_SERVER) clean
 	rm -f wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.static.lib.a
