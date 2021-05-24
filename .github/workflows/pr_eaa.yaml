@@ -1,0 +1,167 @@
+name: Run Enclave Attestation Architecture
+
+# Controls when the action will run. Triggers the workflow on pull request labeled testing-before-checkin.
+on:
+  push
+
+env:
+  WORK_DIR: /root/pkgs
+
+jobs:
+  build_eaa_components:
+    runs-on: ${{ matrix.sgx }}
+    strategy:
+      matrix:
+        sgx: [[self-hosted, eaa]]
+        tag: [centos8.2]
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Prepare work
+      run: echo "CPU_NUM=$(nproc --all)" >> $GITHUB_ENV;
+        echo "RUNE_VERSION=$(grep 'Version:' enclave-tls/dist/rpm/enclave_tls.spec | awk '{print $2}')" >> $GITHUB_ENV;
+        rm -rf $WORK_DIR && mkdir -p $WORK_DIR;
+
+    - name: Build occlum-attestation-agent
+      if: ${{ contains(matrix.tag, 'ubuntu') }}
+      run: |
+        rm -rf /root/test && mkdir /root/test;
+        cp /usr/lib64/libsgx_pce.signed.so /usr/lib64/libsgx_qe3.signed.so \
+          /usr/lib64/libsgx_qve.signed.so /root/test;
+        cd $GITHUB_WORKSPACE && tar zcf /root/test/inclavare-containers.tar.gz ../;
+ 
+        cat >/root/test/Dockerfile <<-EOF
+        From occlum/occlum:0.21.0-aliyunlinux AS src
+
+        ADD inclavare-containers.tar.gz /root/ 
+
+        RUN cd /root/inclavare-containers/enclave-tls && \
+          make OCCLUM=1 && make install
+
+        RUN cd /usr/share/enclave-tls/samples && \
+          mkdir occlum_workspace_server && cd occlum_workspace_server && \
+          occlum init && cp ../enclave-tls-server image/bin && \
+          cp /opt/occlum/glibc/lib/libdl.so.2 image/opt/occlum/glibc/lib && \
+          mkdir -p image/opt/enclave-tls && \
+          cp -rf /opt/enclave-tls/lib image/opt/enclave-tls && \
+          sed -i '27s/true/false/g' Occlum.json && \
+          occlum build && \
+          occlum package occlum_instance.tar.gz
+
+        RUN cd /usr/share/enclave-tls/samples/occlum_workspace_server && \
+          tar zxvf occlum_instance.tar.gz -C /root
+
+        FROM registry.cn-hangzhou.aliyuncs.com/alinux/aliyunlinux:latest
+
+        RUN mkdir -p /run/rune
+        WORKDIR /run/rune
+
+        COPY --from=src /root/occlum_workspace_server    /run/rune/occlum_workspace_server
+
+        COPY libsgx_pce.signed.so /usr/lib64
+        COPY libsgx_qe3.signed.so /usr/lib64
+        COPY libsgx_qve.signed.so /usr/lib64
+
+        RUN echo -e "PCCS_URL=https://sgx-dcap-server-vpc.cn-beijing.aliyuncs.com/sgx/certification/v3/\nUSE_SECURE_CERT=TRUE" > /etc/sgx_default_qcnl.conf
+
+        ENTRYPOINT ["/bin/enclave-tls-server"]
+        EOF
+
+        cd /root/test && docker build . -t occlum-attestation-agent:test;
+        rm -rf /root/test;
+
+    - name: Create inclavare development container
+      run: |
+        docker tag inclavarecontainers/dev:${{ env.RUNE_VERSION }}-centos8.2 inclavare-dev:centos8.2;
+        docker tag inclavarecontainers/dev:${{ env.RUNE_VERSION }}-ubuntu18.04 inclavare-dev:ubuntu18.04;
+        docker tag inclavarecontainers/dev:${{ env.RUNE_VERSION }}-alinux2 inclavare-dev:alinux2;
+        inclavare_dev=$(docker run -itd --privileged --rm --net host -v $GITHUB_WORKSPACE:/root/inclavare-containers inclavare-dev:${{ matrix.tag }});
+        echo "inclavare_dev=$inclavare_dev" >> $GITHUB_ENV
+
+    - name: Config git proxy
+      run: |
+        docker exec $inclavare_dev bash -c 'git config --global http.proxy socks5://localhost:5432'
+        docker exec $inclavare_dev bash -c 'git config --global https.proxy socks5://localhost:5432'
+
+    - name: Build enclave-tls, shelter, inclavared rpm packages
+      if: contains(matrix.tag, 'centos')
+      run: docker exec $inclavare_dev bash -c 'cd /root && source /etc/profile;
+        source /opt/intel/sgxsdk/environment;
+        cp -r inclavare-containers inclavare-containers-${{ env.RUNE_VERSION }};
+        mkdir -p /root/inclavare-containers/${{ matrix.tag }};
+        tar zcf v${{ env.RUNE_VERSION }}.tar.gz inclavare-containers-${{ env.RUNE_VERSION }};
+        cd inclavare-containers-${{ env.RUNE_VERSION }};
+        mkdir -p /root/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS};
+        cp -f /root/v${{ env.RUNE_VERSION }}.tar.gz /root/rpmbuild/SOURCES;
+        cp /root/inclavare-containers-${{ env.RUNE_VERSION }}/enclave-tls/dist/rpm/enclave_tls.filelist /root/rpmbuild/SOURCES;
+        find ./ -path "*.spec" | xargs -I files cp files /root/rpmbuild/SPECS;
+        cd /root/rpmbuild/SPECS && rpmbuild -ba enclave_tls.spec && rpm -ivh /root/rpmbuild/RPMS/x86_64/enclave-tls-${{ env.RUNE_VERSION }}*.rpm;
+        rpmbuild -ba shelter.spec;
+        rpmbuild -ba inclavared.spec;
+        mv /root/rpmbuild/RPMS/x86_64/*.rpm /root/inclavare-containers/${{ matrix.tag }}'
+
+    - name: Kill the dev container
+      run: docker stop $inclavare_dev
+
+    - name: Create runtime testing container
+      run: |
+        docker tag ubuntu:18.04 inclavare-test:ubuntu18.04;
+        docker tag centos:8.2.2004 inclavare-test:centos8.2;
+        inclavare_test=$(docker run -itd --privileged --rm --net host -v /dev/sgx_enclave:/dev/sgx/enclave -v /dev/sgx_provision:/dev/sgx/provision -v $GITHUB_WORKSPACE:/root/inclavare-containers -v /var/run/aesmd:/var/run/aesmd inclavare-test:${{ matrix.tag }});
+        echo "inclavare_test=$inclavare_test" >> $GITHUB_ENV
+
+    - name: Install ubuntu dependency
+      if: ${{ contains(matrix.tag, 'ubuntu') }}
+      run: |
+        docker exec $inclavare_test bash -c 'apt-get update -y && apt-get install -y wget gnupg;
+        echo "deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu bionic main" | tee /etc/apt/sources.list.d/intel-sgx.list && wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | apt-key add -;
+        apt-get update -y && apt-get install -y libsgx-dcap-quote-verify libsgx-dcap-default-qpl libsgx-dcap-ql-dev libsgx-uae-service'
+
+    - name: Install centos dependency
+      if: ${{ contains(matrix.tag, 'centos') }}
+      run: |
+        docker exec $inclavare_test bash -c 'cd /root/inclavare-containers/${{ matrix.tag }};
+        yum -y install yum-utils wget iptables;
+        wget -c https://download.01.org/intel-sgx/sgx-linux/2.13/distro/centos8.2-server/sgx_rpm_local_repo.tgz;
+        tar xzf sgx_rpm_local_repo.tgz;
+        yum-config-manager --add-repo sgx_rpm_local_repo;
+        yum makecache;
+        yum install --nogpgcheck -y libsgx-dcap-quote-verify libsgx-dcap-default-qpl libsgx-dcap-ql-devel libsgx-uae-service;
+        rm -f sgx_rpm_local_repo.tgz;
+        cd /root/inclavare-containers/${{ matrix.tag }};
+        rpm -ivh enclave-tls*.rpm;
+        rpm -ivh shelter*.rpm && rpm -ivh inclavared*.rpm'
+
+    - id: random-port-generator1
+      uses: ./.github/actions/generate-random-port
+
+    - name: Run occlum-attestation-agent
+      run: |
+        echo random-port1 ${{ steps.random-port-generator1.outputs.random-port }}
+        occlum_agent=$(docker run -it --rm --runtime=rune --net host \
+          -e ENCLAVE_TYPE=intelSgx \
+          -e ENCLAVE_RUNTIME_PATH=/opt/occlum/build/lib/libocclum-pal.so.0.21.0 \
+          -e ENCLAVE_RUNTIME_ARGS=occlum_workspace_server \
+          -e OCCLUM_RELEASE_ENCLAVE=1 \
+          occlum-attestation-agent:test --mutual --port ${{ steps.random-port-generator1.outputs.random-port }})
+        echo "occlum_agent=$occlum_agent" >> $GITHUB_ENV 
+
+    - id: random-port-generator2
+      uses: ./.github/actions/generate-random-port
+
+    - name: Run inclavared
+      run: |
+        docker exec $inclavare_test bash -c 'inclavared --listen 127.0.0.1:${{ steps.random-port-generator2.outputs.random-port }} --xfer 127.0.0.1:${{ steps.random-port-generator1.outputs.random-port }} --attester sgx_ecdsa_qve --verifier sgx_ecdsa_qve --mutual' 
+
+    - name: Run shelter
+      run: |
+        docker exec $inclavare_test bash -c 'shelter remoteattestation --addr=tcp://127.0.0.1:${{ steps.random-port-generator2.outputs.random-port }} --verifier sgx_ecdsa --tls wolfssl  --crypto wolfcrypt'
+
+    - name: Clean up the github workspace
+      if: ${{ always() }}
+      run:
+        docker stop $occlum_agent;
+        docker exec $inclavare_test bash -c 'rm -rf /root/inclavare-containers/${{ matrix.tag }}'
+
+    - name: Kill the test container
+      run: docker stop $inclavare_test
