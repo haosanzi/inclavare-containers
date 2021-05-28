@@ -1,0 +1,21 @@
+name: 'check_initialization'
+description: 'check_initialization'
+inputs:
+  images-version:
+    description: 'The version of images'
+    required: true
+runs:
+  using: "composite"
+  steps:
+  - id: check-initialization
+    shell: bash
+    run: |
+      for tag in centos8.2 ubuntu18.04 alinux2
+      do
+        if [[ "$(docker images -q inclavarecontainers/dev:${{ inputs.images-version }}-$tag 2> /dev/null)" == "" ]]
+        then 
+          docker pull inclavarecontainers/dev:${{ inputs.images-version }}-$tag
+        else
+          echo "exist"
+        fi
+      done
