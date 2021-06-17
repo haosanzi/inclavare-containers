@@ -2,15 +2,16 @@ name: Run epm with skeleton
 
 # Controls when the action will run. Triggers the workflow on pull request labeled testing-before-checkin.
 on:
-  pull_request_target:
-    types: labeled
+  push
+        #pull_request_target:
+        #types: labeled
 
 env:
     ALINUX2_PROTOBUF_C_VERSION: 1.0.2
 
 jobs:
   rune_skeleton:
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'testing-before-checkin') }}
+          #if: ${{ contains(github.event.pull_request.labels.*.name, 'testing-before-checkin') }}
     runs-on: ${{ matrix.sgx }}
     strategy:
       matrix:
@@ -18,12 +19,17 @@ jobs:
         tag: [ubuntu18.04, centos8.2, alinux2]
     steps:
     - uses: actions/checkout@v2
-      with:
-        ref: refs/pull/${{ github.event.pull_request.number }}/merge
+      #with:
+      #ref: refs/pull/${{ github.event.pull_request.number }}/merge
 
     - name: Prepare work
-      run: echo "CPU_NUM=$(nproc --all)" >> $GITHUB_ENV;
-        echo "RUNE_VERSION=$(grep 'Version:' rune/dist/rpm/rune.spec | awk '{print $2}')" >> $GITHUB_ENV;
+      uses: nick-invision/retry@v2
+      with:
+        timeout_minutes: 20
+        max_attempts: 30
+        command: echo "CPU_NUM=$(nproc --all)" >> $GITHUB_ENV;
+          echo "RUNE_VERSION=$(grep 'Version:' rune/dist/rpm/rune.spec | awk '{print $2}')" >> $GITHUB_ENV;
+        on_retry_command: echo "retry to execute prepare work!!"
 
     - name: Create inclavare development container
       run: |
