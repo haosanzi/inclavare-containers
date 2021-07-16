@@ -5,15 +5,23 @@ package libenclave // import "github.com/inclavare-containers/rune/libenclave"
 import (
 	"bytes"
 	"encoding/binary"
+
 	"fmt"
+	"github.com/cyphar/filepath-securejoin"
 	"github.com/golang/protobuf/proto"
 	pb "github.com/inclavare-containers/rune/libenclave/proto"
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/stacktrace"
 	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"text/template"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 var errorTemplate = template.Must(template.New("error").Parse(`Timestamp: {{.Timestamp}}
@@ -87,7 +95,7 @@ func (e *genericError) Error() string {
 		return e.Message
 	}
 	frame := e.Stack.Frames[0]
-	return fmt.Sprintf("%s:%d: %s caused %q", frame.File, frame.Line, e.Cause, e.Message)
+	return fmt.Sprintf("%s:%d: %s caused: %s", frame.File, frame.Line, e.Cause, e.Message)
 }
 
 func (e *genericError) Code() libcontainer.ErrorCode {
@@ -151,4 +159,55 @@ func protoBufWrite(conn io.Writer, marshaled interface{}) (err error) {
 		return err
 	}
 	return nil
+}
+
+// stripRoot returns the passed path, stripping the root path if it was
+// (lexicially) inside it. Note that both passed paths will always be treated
+// as absolute, and the returned path will also always be absolute. In
+// addition, the paths are cleaned before stripping the root.
+func stripRoot(root, path string) string {
+	// Make the paths clean and absolute.
+	root, path = filepath.Clean("/"+root), filepath.Clean("/"+path)
+	switch {
+	case path == root:
+		path = "/"
+	case root == "/":
+		// do nothing
+	case strings.HasPrefix(path, root+"/"):
+		path = strings.TrimPrefix(path, root+"/")
+	}
+	return filepath.Clean("/" + path)
+}
+
+// WithProcfd runs the passed closure with a procfd path (/proc/self/fd/...)
+// corresponding to the unsafePath resolved within the root. Before passing the
+// fd, this path is verified to have been inside the root -- so operating on it
+// through the passed fdpath should be safe. Do not access this path through
+// the original path strings, and do not attempt to use the pathname outside of
+// the passed closure (the file handle will be freed once the closure returns).
+func WithProcfd(root, unsafePath string, fn func(procfd string) error) error {
+	// Remove the root then forcefully resolve inside the root.
+	unsafePath = stripRoot(root, unsafePath)
+	path, err := securejoin.SecureJoin(root, unsafePath)
+	if err != nil {
+		return fmt.Errorf("resolving path inside rootfs failed: %v", err)
+	}
+
+	// Open the target path.
+	fh, err := os.OpenFile(path, unix.O_PATH|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("open o_path procfd: %w", err)
+	}
+	defer fh.Close()
+
+	// Double-check the path is the one we expected.
+	procfd := "/proc/self/fd/" + strconv.Itoa(int(fh.Fd()))
+	if realpath, err := os.Readlink(procfd); err != nil {
+		return fmt.Errorf("procfd verification failed: %w", err)
+	} else if realpath != path {
+		return fmt.Errorf("possibly malicious path detected -- refusing to operate on %s", realpath)
+	}
+
+	// Run the closure.
+	return fn(procfd)
 }
